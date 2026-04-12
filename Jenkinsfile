@@ -120,14 +120,26 @@ def smokeTest(String namespace, String nodePort) {
                 -n ${SMOKE_NAMESPACE} \
                 --timeout=120s
 
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-                "http://$NODE_IP:${SMOKE_PORT}/health")
+            echo "5 saniye bekleniyor..."
+            sleep 5
 
-            if [ "$HTTP_STATUS" != "200" ]; then
-                echo "❌ /health döndü: $HTTP_STATUS (beklenen: 200)"
-                exit 1
-            fi
-            echo "✅ /health 200 OK — ${SMOKE_NAMESPACE}"
+            for i in 1 2 3; do
+                HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                    --connect-timeout 10 \
+                    "http://$NODE_IP:${SMOKE_PORT}/health")
+
+                echo "Deneme $i: $HTTP_STATUS"
+
+                if [ "$HTTP_STATUS" = "200" ]; then
+                    echo "✅ /health 200 OK — ${SMOKE_NAMESPACE}"
+                    exit 0
+                fi
+
+                sleep 5
+            done
+
+            echo "❌ /health başarısız: $HTTP_STATUS (beklenen: 200)"
+            exit 1
         '''
     }
 }
