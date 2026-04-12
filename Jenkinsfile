@@ -20,9 +20,9 @@ pipeline {
         PROJECT_NAME_TEST = 'test-project'
         PROJECT_NAME_UAT  = 'uat-project'
 
-        OPENAPI_URL_DEV  = 'http://messaging-api.messaging-dev.svc.cluster.local:8000/openapi.json'
-        OPENAPI_URL_TEST = 'http://messaging-api.messaging-test.svc.cluster.local:8000/openapi.json'
-        OPENAPI_URL_UAT  = 'http://messaging-api.messaging-uat.svc.cluster.local:8000/openapi.json'
+        OPENAPI_URL_DEV  = 'http://167.86.118.166:30211/openapi.json'
+        OPENAPI_URL_TEST = 'http://167.86.118.166:30212/openapi.json'
+        OPENAPI_URL_UAT  = 'http://167.86.118.166:30213/openapi.json'
     }
 
     stages {
