@@ -7,6 +7,7 @@ pipeline {
 
     environment {
         IMAGE_BASE     = 'apinizeren/messaging'
+        NODE_IP        = '167.86.118.166'
         DEV_NODE_PORT  = '30211'
         TEST_NODE_PORT = '30212'
         UAT_NODE_PORT  = '30213'
@@ -19,10 +20,6 @@ pipeline {
                 checkout scm
             }
         }
-
-        // ══════════════════════════════════════════════════════════════════════
-        // DEV
-        // ══════════════════════════════════════════════════════════════════════
 
         stage('Deploy Dev') {
             steps {
@@ -52,10 +49,6 @@ pipeline {
             }
         }
 
-        // ══════════════════════════════════════════════════════════════════════
-        // TEST
-        // ══════════════════════════════════════════════════════════════════════
-
         stage('Deploy Test') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
@@ -83,10 +76,6 @@ pipeline {
                 input message: 'UAT ortamına deploy edilsin mi?', ok: 'Devam Et'
             }
         }
-
-        // ══════════════════════════════════════════════════════════════════════
-        // UAT
-        // ══════════════════════════════════════════════════════════════════════
 
         stage('Deploy UAT') {
             steps {
@@ -118,26 +107,22 @@ pipeline {
 }
 
 def smokeTest(String namespace, String nodePort) {
-    // ''' kullanıyoruz — jsonpath içindeki ?(@.type==...) Groovy'yi karıştırmasın
-    sh '''
-        export KUBECONFIG=$KUBECONFIG
+    withEnv(["SMOKE_NAMESPACE=${namespace}", "SMOKE_PORT=${nodePort}"]) {
+        sh '''
+            echo "Smoke test: http://$NODE_IP:${SMOKE_PORT}/health"
 
-        NODE_IP=$(kubectl get nodes \
-            -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+            kubectl rollout status deployment/messaging-api \
+                -n ${SMOKE_NAMESPACE} \
+                --timeout=120s
 
-        echo "Smoke test: http://${NODE_IP}:''' + nodePort + '''/health"
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                "http://$NODE_IP:${SMOKE_PORT}/health")
 
-        kubectl rollout status deployment/messaging-api \
-            -n ''' + namespace + ''' \
-            --timeout=120s
-
-        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "http://${NODE_IP}:''' + nodePort + '''/health")
-
-        if [ "$HTTP_STATUS" != "200" ]; then
-            echo "❌ /health döndü: $HTTP_STATUS (beklenen: 200)"
-            exit 1
-        fi
-        echo "✅ /health 200 OK — ''' + namespace + '''"
-    '''
+            if [ "$HTTP_STATUS" != "200" ]; then
+                echo "❌ /health döndü: $HTTP_STATUS (beklenen: 200)"
+                exit 1
+            fi
+            echo "✅ /health 200 OK — ${SMOKE_NAMESPACE}"
+        '''
+    }
 }
