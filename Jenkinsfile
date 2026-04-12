@@ -213,6 +213,17 @@ def apinizerProxySync(Map args) {
     "relativePathList": ["/${proxyName}"],
     "hostList": []
   },
+  "routingInfo": {
+    "routingAddressList": [
+      {
+        "address": "${openApiUrl.replace('/openapi.json', '')}",
+        "weight": 100,
+        "healthCheckEnabled": false
+      }
+    ],
+    "routingEnabled": true,
+    "mirrorEnabled": false
+  },
   "deploy": false
 }"""
 
