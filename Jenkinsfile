@@ -197,42 +197,61 @@ def apinizerProxySync(Map args) {
                          allowEmptyArchive: true
     }
 
-    // 2b) Proxy oluştur veya güncelle
-    if (!proxyExists) {
-        echo "ℹ️  Proxy bulunamadı → oluşturuluyor (${projectName}/${proxyName})"
-        def createStatus = sh(
-            script: """
-                curl -s -o /tmp/apinizer_create.json -w "%{http_code}" \
-                    -X POST \
-                    -H "Authorization: Bearer ${token}" \
-                    -H "Content-Type: application/json" \
-                    -d '{"url":"${openApiUrl}","name":"${proxyName}"}' \
-                    "${baseUrl}/apiops/projects/${projectName}/apiProxies/url/"
-            """,
-            returnStdout: true
-        ).trim()
-        echo "Apinizer create HTTP: ${createStatus}"
-        if (!createStatus.startsWith('2')) {
-            error("❌ Proxy oluşturma başarısız (HTTP ${createStatus}): ${readFile('/tmp/apinizer_create.json')}")
-        }
-    } else {
-        echo "ℹ️  Proxy mevcut → güncelleniyor (${projectName}/${proxyName})"
-        def updateStatus = sh(
-            script: """
-                curl -s -o /tmp/apinizer_update.json -w "%{http_code}" \
-                    -X PUT \
-                    -H "Authorization: Bearer ${token}" \
-                    -H "Content-Type: application/json" \
-                    -d '{"url":"${openApiUrl}"}' \
-                    "${baseUrl}/apiops/projects/${projectName}/apiProxies/${proxyName}/"
-            """,
-            returnStdout: true
-        ).trim()
-        echo "Apinizer update HTTP: ${updateStatus}"
-        if (!updateStatus.startsWith('2')) {
-            error("❌ Proxy güncelleme başarısız (HTTP ${updateStatus}): ${readFile('/tmp/apinizer_update.json')}")
-        }
+   // 2b) Proxy oluştur veya güncelle
+if (!proxyExists) {
+    echo "ℹ️  Proxy bulunamadı → oluşturuluyor (${projectName}/${proxyName})"
+
+    // Body'yi dosyaya yaz — shell interpolation sorununu önler
+    writeFile file: '/tmp/apinizer_payload.json', text: """{
+  "apiProxyName": "${proxyName}",
+  "apiProxyCreationType": "OPEN_API",
+  "specUrl": "${openApiUrl}",
+  "deploy": false
+}"""
+
+    def createStatus = sh(
+        script: """
+            curl -s -o /tmp/apinizer_create.json -w "%{http_code}" \\
+                -X POST \\
+                -H "Authorization: Bearer ${token}" \\
+                -H "Content-Type: application/json" \\
+                -d @/tmp/apinizer_payload.json \\
+                "${baseUrl}/apiops/projects/${projectName}/apiProxies/url/"
+        """,
+        returnStdout: true
+    ).trim()
+
+    echo "Apinizer create HTTP: ${createStatus}"
+    if (!createStatus.startsWith('2')) {
+        error("❌ Proxy oluşturma başarısız (HTTP ${createStatus}): ${readFile('/tmp/apinizer_create.json')}")
     }
+} else {
+    echo "ℹ️  Proxy mevcut → güncelleniyor (${projectName}/${proxyName})"
+
+    writeFile file: '/tmp/apinizer_payload.json', text: """{
+  "apiProxyName": "${proxyName}",
+  "apiProxyCreationType": "OPEN_API",
+  "specUrl": "${openApiUrl}",
+  "reParse": true
+}"""
+
+    def updateStatus = sh(
+        script: """
+            curl -s -o /tmp/apinizer_update.json -w "%{http_code}" \\
+                -X PUT \\
+                -H "Authorization: Bearer ${token}" \\
+                -H "Content-Type: application/json" \\
+                -d @/tmp/apinizer_payload.json \\
+                "${baseUrl}/apiops/projects/${projectName}/apiProxies/${proxyName}/"
+        """,
+        returnStdout: true
+    ).trim()
+
+    echo "Apinizer update HTTP: ${updateStatus}"
+    if (!updateStatus.startsWith('2')) {
+        error("❌ Proxy güncelleme başarısız (HTTP ${updateStatus}): ${readFile('/tmp/apinizer_update.json')}")
+    }
+}
 
     // 3) Ortama deploy et
     echo "🚀 Deploy ediliyor → ${projectName}/${proxyName} @ ${environment}"
