@@ -12,5 +12,5 @@ configMapGenerator:
       - ENVIRONMENT=uat
 
 images:
-  - name: ghcr.io/YOUR_ORG/messaging-api
+  - name: apinizeren/messaging
     newTag: latest

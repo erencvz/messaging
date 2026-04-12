@@ -15,8 +15,8 @@ spec:
         app: messaging-api
     spec:
       containers:
-        - name: messaging-api
-          image: ghcr.io/YOUR_ORG/messaging-api:latest
+        - name: messaging
+          image: apinizeren/messaging:latest
           ports:
             - containerPort: 8000
           env:

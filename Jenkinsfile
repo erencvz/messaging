@@ -2,8 +2,9 @@
 // Jenkinsfile — messaging-api CD Pipeline
 // GitHub Actions bu pipeline'ı SHA_TAG parametresiyle tetikler.
 //
-// PLACEHOLDER: YOUR_PROJECT — Apinizer'daki proje adıyla değiştir
-//              (Tüm withCredentials bloklarındaki apinizerTrigger() çağrısında kullanılır)
+// PLACEHOLDER'LAR:
+//   IMAGE_BASE          → Docker Hub kullanıcı adın (YOUR_DOCKERHUB_USERNAME)
+//   apinizer-*-project  → Her ortam için Jenkins credential'ı (aşağıya bak)
 // ─────────────────────────────────────────────────────────────────────────────
 
 pipeline {
@@ -14,8 +15,7 @@ pipeline {
     }
 
     environment {
-        IMAGE_BASE = 'ghcr.io/YOUR_ORG/messaging-api'
-        APINIZER_PROJECT = 'YOUR_PROJECT'   // ← Burası değiştirilecek
+        IMAGE_BASE = 'apinizeren/messaging'
     }
 
     stages {
@@ -34,10 +34,11 @@ pipeline {
         stage('Deploy Dev') {
             steps {
                 withCredentials([
-                    file(credentialsId: 'kubeconfig',            variable: 'KUBECONFIG'),
-                    string(credentialsId: 'apinizer-base-url',   variable: 'APINIZER_BASE_URL'),
-                    string(credentialsId: 'apinizer-token',      variable: 'APINIZER_TOKEN'),
-                    string(credentialsId: 'apinizer-dev-api-id', variable: 'APINIZER_API_ID'),
+                    file(credentialsId: 'kubeconfig',                variable: 'KUBECONFIG'),
+                    string(credentialsId: 'apinizer-base-url',       variable: 'APINIZER_BASE_URL'),
+                    string(credentialsId: 'apinizer-token',          variable: 'APINIZER_TOKEN'),
+                    string(credentialsId: 'apinizer-dev-project',    variable: 'APINIZER_PROJECT'),
+                    string(credentialsId: 'apinizer-dev-api-id',     variable: 'APINIZER_API_ID'),
                 ]) {
                     sh """
                         cd k8s/overlays/dev
@@ -73,10 +74,11 @@ pipeline {
         stage('Deploy Test') {
             steps {
                 withCredentials([
-                    file(credentialsId: 'kubeconfig',             variable: 'KUBECONFIG'),
-                    string(credentialsId: 'apinizer-base-url',    variable: 'APINIZER_BASE_URL'),
-                    string(credentialsId: 'apinizer-token',       variable: 'APINIZER_TOKEN'),
-                    string(credentialsId: 'apinizer-test-api-id', variable: 'APINIZER_API_ID'),
+                    file(credentialsId: 'kubeconfig',                variable: 'KUBECONFIG'),
+                    string(credentialsId: 'apinizer-base-url',       variable: 'APINIZER_BASE_URL'),
+                    string(credentialsId: 'apinizer-token',          variable: 'APINIZER_TOKEN'),
+                    string(credentialsId: 'apinizer-test-project',   variable: 'APINIZER_PROJECT'),
+                    string(credentialsId: 'apinizer-test-api-id',    variable: 'APINIZER_API_ID'),
                 ]) {
                     sh """
                         cd k8s/overlays/test
@@ -112,10 +114,11 @@ pipeline {
         stage('Deploy UAT') {
             steps {
                 withCredentials([
-                    file(credentialsId: 'kubeconfig',            variable: 'KUBECONFIG'),
-                    string(credentialsId: 'apinizer-base-url',   variable: 'APINIZER_BASE_URL'),
-                    string(credentialsId: 'apinizer-token',      variable: 'APINIZER_TOKEN'),
-                    string(credentialsId: 'apinizer-uat-api-id', variable: 'APINIZER_API_ID'),
+                    file(credentialsId: 'kubeconfig',                variable: 'KUBECONFIG'),
+                    string(credentialsId: 'apinizer-base-url',       variable: 'APINIZER_BASE_URL'),
+                    string(credentialsId: 'apinizer-token',          variable: 'APINIZER_TOKEN'),
+                    string(credentialsId: 'apinizer-uat-project',    variable: 'APINIZER_PROJECT'),
+                    string(credentialsId: 'apinizer-uat-api-id',     variable: 'APINIZER_API_ID'),
                 ]) {
                     sh """
                         cd k8s/overlays/uat
@@ -148,31 +151,23 @@ pipeline {
 // HELPER FUNCTIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * smokeTest — NodePort üzerinden /health endpoint'ini test eder.
- * Node IP'sini `kubectl get nodes` ile, portu `kubectl get svc` ile dinamik alır.
- */
 def smokeTest(String namespace) {
     sh """
         export KUBECONFIG=\$KUBECONFIG
 
-        # İlk Ready node'un internal IP'sini al
         NODE_IP=\$(kubectl get nodes \
             -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
 
-        # Servisin NodePort'unu al
         NODE_PORT=\$(kubectl get svc messaging-api \
             -n ${namespace} \
             -o jsonpath='{.spec.ports[0].nodePort}')
 
         echo "Smoke test: http://\${NODE_IP}:\${NODE_PORT}/health"
 
-        # Deployment rollout tamamlanana kadar bekle (max 120s)
         kubectl rollout status deployment/messaging-api \
             -n ${namespace} \
             --timeout=120s
 
-        # /health endpoint kontrolü
         HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" \
             "http://\${NODE_IP}:\${NODE_PORT}/health")
 
@@ -184,18 +179,10 @@ def smokeTest(String namespace) {
     """
 }
 
-/**
- * apinizerTrigger — Apinizer Management API'ye deploy sinyali gönderir.
- * Çağrıldığı withCredentials bloğunda APINIZER_BASE_URL, APINIZER_TOKEN,
- * APINIZER_API_ID değişkenlerinin tanımlı olması gerekir.
- *
- * URL formatı: {APINIZER_BASE_URL}/apiops/projects/{PROJECT}/apiProxies/{API_ID}/environments/{env}/
- * PLACEHOLDER: env segmenti (dev/test/uat) değerleri Apinizer ortam adlarınızla eşleşmelidir.
- */
 def apinizerTrigger(String env) {
     sh """
         curl -f -s -X POST \
-            "\${APINIZER_BASE_URL}/apiops/projects/${APINIZER_PROJECT}/apiProxies/\${APINIZER_API_ID}/environments/${env}/" \
+            "\${APINIZER_BASE_URL}/apiops/projects/\${APINIZER_PROJECT}/apiProxies/\${APINIZER_API_ID}/environments/${env}/" \
             -H "Authorization: Bearer \${APINIZER_TOKEN}" \
             -H "Content-Type: application/json" \
         || echo "⚠️  Apinizer trigger başarısız (${env}) — pipeline devam ediyor."
