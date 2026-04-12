@@ -55,14 +55,8 @@ jobs:
             ${{ env.IMAGE_NAME }}:sha-${{ steps.vars.outputs.SHORT_SHA }}
             ${{ env.IMAGE_NAME }}:latest
 
-      - name: Trigger Jenkins deploy pipeline
+      - name: Trigger Jenkins Pipeline
         run: |
-          CRUMB=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
-            "${{ secrets.JENKINS_URL }}/crumbIssuer/api/json" \
-            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['crumbRequestField']+':'+d['crumb'])")
-
-          curl -f -X POST \
-            "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/buildWithParameters" \
-            --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
-            -H "$CRUMB" \
-            --data-urlencode "SHA_TAG=sha-${{ steps.vars.outputs.SHORT_SHA }}"
+          curl -X POST ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/buildWithParameters \
+            --user ${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }} \
+            --data IMAGE_TAG=sha-${{ steps.vars.outputs.SHORT_SHA }}
