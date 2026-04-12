@@ -25,9 +25,10 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
+                        export KUBECONFIG=\$KUBECONFIG
                         cd k8s/overlays/dev
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
-                        kubectl --kubeconfig=\$KUBECONFIG apply -k .
+                        kubectl apply -k .
                     """
                 }
             }
@@ -53,9 +54,10 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
+                        export KUBECONFIG=\$KUBECONFIG
                         cd k8s/overlays/test
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
-                        kubectl --kubeconfig=\$KUBECONFIG apply -k .
+                        kubectl apply -k .
                     """
                 }
             }
@@ -81,9 +83,10 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
+                        export KUBECONFIG=\$KUBECONFIG
                         cd k8s/overlays/uat
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
-                        kubectl --kubeconfig=\$KUBECONFIG apply -k .
+                        kubectl apply -k .
                     """
                 }
             }
@@ -109,6 +112,8 @@ pipeline {
 def smokeTest(String namespace, String nodePort) {
     withEnv(["SMOKE_NAMESPACE=${namespace}", "SMOKE_PORT=${nodePort}"]) {
         sh '''
+            export KUBECONFIG=$KUBECONFIG
+
             echo "Smoke test: http://$NODE_IP:${SMOKE_PORT}/health"
 
             kubectl rollout status deployment/messaging-api \
