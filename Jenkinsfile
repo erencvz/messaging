@@ -7,6 +7,7 @@ pipeline {
 
     environment {
         IMAGE_BASE     = 'apinizeren/messaging'
+        NODE_IP        = '167.86.118.166'
         DEV_NODE_PORT  = '30211'
         TEST_NODE_PORT = '30212'
         UAT_NODE_PORT  = '30213'
@@ -20,17 +21,14 @@ pipeline {
             }
         }
 
-        // ══════════════════════════════════════════════════════════════════════
-        // DEV
-        // ══════════════════════════════════════════════════════════════════════
-
         stage('Deploy Dev') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
+                        export KUBECONFIG=\$KUBECONFIG
                         cd k8s/overlays/dev
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
-                        kubectl --kubeconfig=\$KUBECONFIG apply -k .
+                        kubectl apply -k .
                     """
                 }
             }
@@ -52,17 +50,14 @@ pipeline {
             }
         }
 
-        // ══════════════════════════════════════════════════════════════════════
-        // TEST
-        // ══════════════════════════════════════════════════════════════════════
-
         stage('Deploy Test') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
+                        export KUBECONFIG=\$KUBECONFIG
                         cd k8s/overlays/test
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
-                        kubectl --kubeconfig=\$KUBECONFIG apply -k .
+                        kubectl apply -k .
                     """
                 }
             }
@@ -84,17 +79,14 @@ pipeline {
             }
         }
 
-        // ══════════════════════════════════════════════════════════════════════
-        // UAT
-        // ══════════════════════════════════════════════════════════════════════
-
         stage('Deploy UAT') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
+                        export KUBECONFIG=\$KUBECONFIG
                         cd k8s/overlays/uat
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
-                        kubectl --kubeconfig=\$KUBECONFIG apply -k .
+                        kubectl apply -k .
                     """
                 }
             }
@@ -118,25 +110,24 @@ pipeline {
 }
 
 def smokeTest(String namespace, String nodePort) {
-    sh """
-        export KUBECONFIG=\$KUBECONFIG
+    withEnv(["SMOKE_NAMESPACE=${namespace}", "SMOKE_PORT=${nodePort}"]) {
+        sh '''
+            export KUBECONFIG=$KUBECONFIG
 
-        NODE_IP=\$(kubectl get nodes \
-            -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+            echo "Smoke test: http://$NODE_IP:${SMOKE_PORT}/health"
 
-        echo "Smoke test: http://\${NODE_IP}:${nodePort}/health"
+            kubectl rollout status deployment/messaging-api \
+                -n ${SMOKE_NAMESPACE} \
+                --timeout=120s
 
-        kubectl rollout status deployment/messaging-api \
-            -n ${namespace} \
-            --timeout=120s
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                "http://$NODE_IP:${SMOKE_PORT}/health")
 
-        HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" \
-            "http://\${NODE_IP}:${nodePort}/health")
-
-        if [ "\$HTTP_STATUS" != "200" ]; then
-            echo "❌ /health döndü: \$HTTP_STATUS (beklenen: 200)"
-            exit 1
-        fi
-        echo "✅ /health 200 OK — ${namespace}"
-    """
+            if [ "$HTTP_STATUS" != "200" ]; then
+                echo "❌ /health döndü: $HTTP_STATUS (beklenen: 200)"
+                exit 1
+            fi
+            echo "✅ /health 200 OK — ${SMOKE_NAMESPACE}"
+        '''
+    }
 }
