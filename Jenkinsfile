@@ -19,6 +19,17 @@ pipeline {
 
         APINIZER_URL   = credentials('apinizer-management-url')
         APINIZER_TOKEN = credentials('APINIZER_DEMO_TOKEN')
+
+        // Sabit değerler — parametre değil
+        PROXY_NAME        = 'messaging-api'
+        PROJECT_NAME_DEV  = 'dev-project'
+        PROJECT_NAME_TEST = 'test-project'
+        PROJECT_NAME_UAT  = 'uat-project'
+    
+        // Her ortam kendi NodePort'u üzerinden openapi.json'ı sunar
+        OPENAPI_URL_DEV  = "http://${NODE_IP}:30211/openapi.json"
+        OPENAPI_URL_TEST = "http://${NODE_IP}:30212/openapi.json"
+        OPENAPI_URL_UAT  = "http://${NODE_IP}:30213/openapi.json"
     }
 
     stages {
@@ -48,7 +59,7 @@ pipeline {
                     apinizerProxySync(
                         proxyName:   params.PROXY_NAME,
                         projectName: params.PROJECT_NAME_DEV,
-                        openApiUrl:  params.OPENAPI_URL,
+                        openApiUrl:  params.OPENAPI_URL_DEV,
                         environment: 'dev'
                     )
                 }
@@ -92,7 +103,7 @@ pipeline {
                     apinizerProxySync(
                         proxyName:   params.PROXY_NAME,
                         projectName: params.PROJECT_NAME_TEST,
-                        openApiUrl:  params.OPENAPI_URL,
+                        openApiUrl:  params.OPENAPI_URL_TEST,
                         environment: 'test'
                     )
                 }
@@ -136,7 +147,7 @@ pipeline {
                     apinizerProxySync(
                         proxyName:   params.PROXY_NAME,
                         projectName: params.PROJECT_NAME_UAT,
-                        openApiUrl:  params.OPENAPI_URL,
+                        openApiUrl:  params.OPENAPI_URL_UAT,
                         environment: 'uat'
                     )
                 }
