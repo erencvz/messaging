@@ -230,7 +230,7 @@ def apinizerProxySync(Map args) {
   },
   "reParse": ${proxyExists},
   "deploy": true,
-  "deployTargetEnvironmentNameList": ["${environment}"
+  "deployTargetEnvironmentNameList": ["${environment}"]
 }"""
 
     def syncStatus = sh(
