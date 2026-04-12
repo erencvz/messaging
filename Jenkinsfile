@@ -118,25 +118,26 @@ pipeline {
 }
 
 def smokeTest(String namespace, String nodePort) {
-    sh """
-        export KUBECONFIG=\$KUBECONFIG
+    // ''' kullanıyoruz — jsonpath içindeki ?(@.type==...) Groovy'yi karıştırmasın
+    sh '''
+        export KUBECONFIG=$KUBECONFIG
 
-        NODE_IP=\$(kubectl get nodes \
+        NODE_IP=$(kubectl get nodes \
             -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
 
-        echo "Smoke test: http://\${NODE_IP}:${nodePort}/health"
+        echo "Smoke test: http://${NODE_IP}:''' + nodePort + '''/health"
 
         kubectl rollout status deployment/messaging-api \
-            -n ${namespace} \
+            -n ''' + namespace + ''' \
             --timeout=120s
 
-        HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" \
-            "http://\${NODE_IP}:${nodePort}/health")
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "http://${NODE_IP}:''' + nodePort + '''/health")
 
-        if [ "\$HTTP_STATUS" != "200" ]; then
-            echo "❌ /health döndü: \$HTTP_STATUS (beklenen: 200)"
+        if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ /health döndü: $HTTP_STATUS (beklenen: 200)"
             exit 1
         fi
-        echo "✅ /health 200 OK — ${namespace}"
-    """
+        echo "✅ /health 200 OK — ''' + namespace + '''"
+    '''
 }
