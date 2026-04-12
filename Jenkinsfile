@@ -40,6 +40,11 @@ pipeline {
                         cd k8s/overlays/dev
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
                         kubectl apply -k .
+
+                         # Pod tamamen ayağa kalkana kadar bekle
+                        kubectl rollout status deployment/messaging-api \
+                            -n messaging-dev \
+                            --timeout=120s
                     """
                 }
             }
@@ -84,6 +89,11 @@ pipeline {
                         cd k8s/overlays/test
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
                         kubectl apply -k .
+
+                        # Pod tamamen ayağa kalkana kadar bekle
+                        kubectl rollout status deployment/messaging-api \
+                            -n messaging-test \
+                            --timeout=120s
                     """
                 }
             }
@@ -128,6 +138,11 @@ pipeline {
                         cd k8s/overlays/uat
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
                         kubectl apply -k .
+
+                        # Pod tamamen ayağa kalkana kadar bekle
+                        kubectl rollout status deployment/messaging-api \
+                            -n messaging-uat \
+                            --timeout=120s
                     """
                 }
             }
