@@ -213,10 +213,14 @@ if (!proxyExists) {
     echo "ℹ️  Proxy bulunamadı → oluşturuluyor (${projectName}/${proxyName})"
 
     // Body'yi dosyaya yaz — shell interpolation sorununu önler
-    writeFile file: '/tmp/apinizer_payload.json', text: """{
+ writeFile file: '/tmp/apinizer_payload.json', text: """{
   "apiProxyName": "${proxyName}",
   "apiProxyCreationType": "OPEN_API",
   "specUrl": "${openApiUrl}",
+  "clientRoute": {
+    "relativePathList": ["/${proxyName}"],
+    "hostList": []
+  },
   "deploy": false
 }"""
 
