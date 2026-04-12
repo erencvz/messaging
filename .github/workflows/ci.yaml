@@ -59,4 +59,4 @@ jobs:
         run: |
           curl -X POST ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/buildWithParameters \
             --user ${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }} \
-            --data IMAGE_TAG=sha-${{ steps.vars.outputs.SHORT_SHA }}
+            --data SHA_TAG=sha-${{ steps.vars.outputs.SHORT_SHA }}
