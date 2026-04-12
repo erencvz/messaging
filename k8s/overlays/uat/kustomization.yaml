@@ -5,7 +5,8 @@ namespace: messaging-uat
 
 resources:
   - ../../base
-
+patches:
+  - path: service-patch.yaml
 configMapGenerator:
   - name: messaging-api-env
     literals:
