@@ -1,12 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// Jenkinsfile — messaging-api CD Pipeline
-// GitHub Actions bu pipeline'ı SHA_TAG parametresiyle tetikler.
-//
-// PLACEHOLDER'LAR:
-//   IMAGE_BASE          → Docker Hub kullanıcı adın (YOUR_DOCKERHUB_USERNAME)
-//   apinizer-*-project  → Her ortam için Jenkins credential'ı (aşağıya bak)
-// ─────────────────────────────────────────────────────────────────────────────
-
 pipeline {
     agent any
 
@@ -15,12 +6,14 @@ pipeline {
     }
 
     environment {
-        IMAGE_BASE = 'apinizeren/messaging'
+        IMAGE_BASE     = 'apinizeren/messaging'
+        DEV_NODE_PORT  = '30211'
+        TEST_NODE_PORT = '30212'
+        UAT_NODE_PORT  = '30213'
     }
 
     stages {
 
-        // ── Checkout ────────────────────────────────────────────────────────
         stage('Checkout') {
             steps {
                 checkout scm
@@ -33,19 +26,12 @@ pipeline {
 
         stage('Deploy Dev') {
             steps {
-                withCredentials([
-                    file(credentialsId: 'kubeconfig',                variable: 'KUBECONFIG'),
-                    string(credentialsId: 'apinizer-base-url',       variable: 'APINIZER_BASE_URL'),
-                    string(credentialsId: 'apinizer-token',          variable: 'APINIZER_TOKEN'),
-                    string(credentialsId: 'apinizer-dev-project',    variable: 'APINIZER_PROJECT'),
-                    string(credentialsId: 'apinizer-dev-api-id',     variable: 'APINIZER_API_ID'),
-                ]) {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
                         cd k8s/overlays/dev
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
                         kubectl --kubeconfig=\$KUBECONFIG apply -k .
                     """
-                    apinizerTrigger('dev')
                 }
             }
             post { failure { echo '❌ Deploy Dev başarısız.' } }
@@ -54,13 +40,12 @@ pipeline {
         stage('Smoke Test Dev') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    smokeTest('messaging-dev')
+                    smokeTest('messaging-dev', env.DEV_NODE_PORT)
                 }
             }
             post { failure { echo '❌ Smoke Test Dev başarısız — pipeline durduruluyor.' } }
         }
 
-        // ── Manual gate ─────────────────────────────────────────────────────
         stage('Approve Test') {
             steps {
                 input message: 'Test ortamına deploy edilsin mi?', ok: 'Devam Et'
@@ -73,19 +58,12 @@ pipeline {
 
         stage('Deploy Test') {
             steps {
-                withCredentials([
-                    file(credentialsId: 'kubeconfig',                variable: 'KUBECONFIG'),
-                    string(credentialsId: 'apinizer-base-url',       variable: 'APINIZER_BASE_URL'),
-                    string(credentialsId: 'apinizer-token',          variable: 'APINIZER_TOKEN'),
-                    string(credentialsId: 'apinizer-test-project',   variable: 'APINIZER_PROJECT'),
-                    string(credentialsId: 'apinizer-test-api-id',    variable: 'APINIZER_API_ID'),
-                ]) {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
                         cd k8s/overlays/test
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
                         kubectl --kubeconfig=\$KUBECONFIG apply -k .
                     """
-                    apinizerTrigger('test')
                 }
             }
             post { failure { echo '❌ Deploy Test başarısız.' } }
@@ -94,13 +72,12 @@ pipeline {
         stage('Smoke Test Test') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    smokeTest('messaging-test')
+                    smokeTest('messaging-test', env.TEST_NODE_PORT)
                 }
             }
             post { failure { echo '❌ Smoke Test (test) başarısız — pipeline durduruluyor.' } }
         }
 
-        // ── Manual gate ─────────────────────────────────────────────────────
         stage('Approve UAT') {
             steps {
                 input message: 'UAT ortamına deploy edilsin mi?', ok: 'Devam Et'
@@ -113,19 +90,12 @@ pipeline {
 
         stage('Deploy UAT') {
             steps {
-                withCredentials([
-                    file(credentialsId: 'kubeconfig',                variable: 'KUBECONFIG'),
-                    string(credentialsId: 'apinizer-base-url',       variable: 'APINIZER_BASE_URL'),
-                    string(credentialsId: 'apinizer-token',          variable: 'APINIZER_TOKEN'),
-                    string(credentialsId: 'apinizer-uat-project',    variable: 'APINIZER_PROJECT'),
-                    string(credentialsId: 'apinizer-uat-api-id',     variable: 'APINIZER_API_ID'),
-                ]) {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh """
                         cd k8s/overlays/uat
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
                         kubectl --kubeconfig=\$KUBECONFIG apply -k .
                     """
-                    apinizerTrigger('uat')
                 }
             }
             post { failure { echo '❌ Deploy UAT başarısız.' } }
@@ -134,7 +104,7 @@ pipeline {
         stage('Smoke Test UAT') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    smokeTest('messaging-uat')
+                    smokeTest('messaging-uat', env.UAT_NODE_PORT)
                 }
             }
             post { failure { echo '❌ Smoke Test UAT başarısız.' } }
@@ -147,44 +117,26 @@ pipeline {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPER FUNCTIONS
-// ─────────────────────────────────────────────────────────────────────────────
-
-def smokeTest(String namespace) {
+def smokeTest(String namespace, String nodePort) {
     sh """
         export KUBECONFIG=\$KUBECONFIG
 
         NODE_IP=\$(kubectl get nodes \
             -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
 
-        NODE_PORT=\$(kubectl get svc messaging-api \
-            -n ${namespace} \
-            -o jsonpath='{.spec.ports[0].nodePort}')
-
-        echo "Smoke test: http://\${NODE_IP}:\${NODE_PORT}/health"
+        echo "Smoke test: http://\${NODE_IP}:${nodePort}/health"
 
         kubectl rollout status deployment/messaging-api \
             -n ${namespace} \
             --timeout=120s
 
         HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" \
-            "http://\${NODE_IP}:\${NODE_PORT}/health")
+            "http://\${NODE_IP}:${nodePort}/health")
 
         if [ "\$HTTP_STATUS" != "200" ]; then
             echo "❌ /health döndü: \$HTTP_STATUS (beklenen: 200)"
             exit 1
         fi
         echo "✅ /health 200 OK — ${namespace}"
-    """
-}
-
-def apinizerTrigger(String env) {
-    sh """
-        curl -f -s -X POST \
-            "\${APINIZER_BASE_URL}/apiops/projects/\${APINIZER_PROJECT}/apiProxies/\${APINIZER_API_ID}/environments/${env}/" \
-            -H "Authorization: Bearer \${APINIZER_TOKEN}" \
-            -H "Content-Type: application/json" \
-        || echo "⚠️  Apinizer trigger başarısız (${env}) — pipeline devam ediyor."
     """
 }
