@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: messaging-api
+  labels:
+    app: messaging-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: messaging-api
+  template:
+    metadata:
+      labels:
+        app: messaging-api
+    spec:
+      containers:
+        - name: messaging-api
+          image: ghcr.io/YOUR_ORG/messaging-api:latest
+          ports:
+            - containerPort: 8000
+          env:
+            # ENVIRONMENT overlay'deki ConfigMap tarafından inject edilir
+            - name: ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: messaging-api-env
+                  key: ENVIRONMENT

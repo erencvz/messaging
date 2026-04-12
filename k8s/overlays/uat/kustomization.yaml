@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: messaging-uat
+
+resources:
+  - ../../base
+
+configMapGenerator:
+  - name: messaging-api-env
+    literals:
+      - ENVIRONMENT=uat
+
+images:
+  - name: ghcr.io/YOUR_ORG/messaging-api
+    newTag: latest
