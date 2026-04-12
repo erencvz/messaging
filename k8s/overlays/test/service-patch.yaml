@@ -6,4 +6,4 @@ spec:
   ports:
     - port: 8000
       targetPort: 8000
-      nodePort: 30213
+      nodePort: 30212
