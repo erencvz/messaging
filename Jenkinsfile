@@ -175,6 +175,7 @@ def apinizerProxySync(Map args) {
 
     def baseUrl = env.APINIZER_URL
     def token   = env.APINIZER_TOKEN
+    def backendUrl = openApiUrl.replace('/openapi.json', '')
 
     // 1) Proxy var mı kontrol et
     sh(
@@ -189,23 +190,26 @@ def apinizerProxySync(Map args) {
     def listBody    = readFile('/tmp/apinizer_list.json')
     def proxyExists = listBody.contains("\"${proxyName}\"")
 
-    // 2a) Rollback snapshot (proxy varsa)
+    // 2a) Rollback snapshot (proxy varsa) — workspace'e kaydet
     if (proxyExists) {
         sh """
-            curl -s -o /tmp/apinizer_backup_${environment}_${proxyName}.zip \
+            curl -s -o apinizer_backup_${environment}_${proxyName}.zip \
                 -H "Authorization: Bearer ${token}" \
                 "${baseUrl}/apiops/projects/${projectName}/apiProxies/${proxyName}/export/"
             echo "✅ Rollback snapshot alındı."
         """
-        archiveArtifacts artifacts: "tmp/apinizer_backup_${environment}_${proxyName}.zip",
+        archiveArtifacts artifacts: "apinizer_backup_${environment}_${proxyName}.zip",
                          allowEmptyArchive: true
     }
 
-    // 2b) Proxy oluştur veya güncelle
-    if (!proxyExists) {
-        echo "ℹ️  Proxy bulunamadı → oluşturuluyor (${projectName}/${proxyName})"
+    // 2b) Proxy oluştur veya güncelle — ikisi de /url/ endpoint'ini kullanır
+    def method  = proxyExists ? 'PUT' : 'POST'
+    def outFile = proxyExists ? '/tmp/apinizer_update.json' : '/tmp/apinizer_create.json'
+    def action  = proxyExists ? 'güncelleme' : 'oluşturma'
 
-        writeFile file: '/tmp/apinizer_payload.json', text: """{
+    echo "ℹ️  Proxy ${proxyExists ? 'mevcut → güncelleniyor' : 'bulunamadı → oluşturuluyor'} (${projectName}/${proxyName})"
+
+    writeFile file: '/tmp/apinizer_payload.json', text: """{
   "apiProxyName": "${proxyName}",
   "apiProxyCreationType": "OPEN_API",
   "specUrl": "${openApiUrl}",
@@ -216,7 +220,7 @@ def apinizerProxySync(Map args) {
   "routingInfo": {
     "routingAddressList": [
       {
-        "address": "${openApiUrl.replace('/openapi.json', '')}",
+        "address": "${backendUrl}",
         "weight": 100,
         "healthCheckEnabled": false
       }
@@ -224,57 +228,25 @@ def apinizerProxySync(Map args) {
     "routingEnabled": true,
     "mirrorEnabled": false
   },
+  "reParse": ${proxyExists},
   "deploy": false
 }"""
 
-        def createStatus = sh(
-            script: """
-                curl -s -o /tmp/apinizer_create.json -w "%{http_code}" \\
-                    -X POST \\
-                    -H "Authorization: Bearer ${token}" \\
-                    -H "Content-Type: application/json" \\
-                    -d @/tmp/apinizer_payload.json \\
-                    "${baseUrl}/apiops/projects/${projectName}/apiProxies/url/"
-            """,
-            returnStdout: true
-        ).trim()
+    def syncStatus = sh(
+        script: """
+            curl -s -o ${outFile} -w "%{http_code}" \\
+                -X ${method} \\
+                -H "Authorization: Bearer ${token}" \\
+                -H "Content-Type: application/json" \\
+                -d @/tmp/apinizer_payload.json \\
+                "${baseUrl}/apiops/projects/${projectName}/apiProxies/url/"
+        """,
+        returnStdout: true
+    ).trim()
 
-        echo "Apinizer create HTTP: ${createStatus}"
-        if (!createStatus.startsWith('2')) {
-            error("❌ Proxy oluşturma başarısız (HTTP ${createStatus}): ${readFile('/tmp/apinizer_create.json')}")
-        }
-
-    } else {
-        echo "ℹ️  Proxy mevcut → güncelleniyor (${projectName}/${proxyName})"
-
-        writeFile file: '/tmp/apinizer_payload.json', text: """{
-  "apiProxyName": "${proxyName}",
-  "apiProxyCreationType": "OPEN_API",
-  "specUrl": "${openApiUrl}",
-  "clientRoute": {
-    "relativePathList": ["/${proxyName}"],
-    "hostList": []
-  },
-  "reParse": true,
-  "deploy": false
-}"""
-
-        def updateStatus = sh(
-            script: """
-                curl -s -o /tmp/apinizer_update.json -w "%{http_code}" \\
-                    -X PUT \\
-                    -H "Authorization: Bearer ${token}" \\
-                    -H "Content-Type: application/json" \\
-                    -d @/tmp/apinizer_payload.json \\
-                    "${baseUrl}/apiops/projects/${projectName}/apiProxies/${proxyName}/"
-            """,
-            returnStdout: true
-        ).trim()
-
-        echo "Apinizer update HTTP: ${updateStatus}"
-        if (!updateStatus.startsWith('2')) {
-            error("❌ Proxy güncelleme başarısız (HTTP ${updateStatus}): ${readFile('/tmp/apinizer_update.json')}")
-        }
+    echo "Apinizer ${action} HTTP: ${syncStatus}"
+    if (!syncStatus.startsWith('2')) {
+        error("❌ Proxy ${action} başarısız (HTTP ${syncStatus}): ${readFile(outFile)}")
     }
 
     // 3) Ortama deploy et
@@ -296,7 +268,6 @@ def apinizerProxySync(Map args) {
 
     echo "✅ Apinizer proxy ${environment} ortamına başarıyla deploy edildi."
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Kubernetes rollout + /health kontrol
 // ─────────────────────────────────────────────────────────────────────────────
