@@ -65,7 +65,7 @@ pipeline {
         }
         stage('Approve Test') {
             steps {
-                input message: 'Test ortamına deploy edilsin mi?', ok: 'Devam Et'
+                input message: 'Should it be deployed to the test environment?', ok: 'Proceed'
             }
         }
         // ─── TEST ─────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ pipeline {
         }
         stage('Approve UAT') {
             steps {
-                input message: 'UAT ortamına deploy edilsin mi?', ok: 'Devam Et'
+                input message: 'Should it be deployed to the UAT environment?', ok: 'Proceed'
             }
         }
         // ─── UAT ─────────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ pipeline {
         // ─── PROD ─────────────────────────────────────────────────────────────
         stage('Approve Prod') {
             steps {
-                input message: '🚨 PROD ortamına promote edilsin mi?', ok: 'Devam Et'
+                input message: 'Should it be promoted to PRODUCTION?', ok: 'Proceed'
             }
         }
         stage('Promote to Prod') {
