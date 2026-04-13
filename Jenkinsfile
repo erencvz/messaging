@@ -230,11 +230,11 @@ def apinizerProxySync(Map args) {
     def token       = env.APINIZER_TOKEN
     def backendUrl  = openApiUrl.replace('/openapi.json', '')
 
-    // 1 — Proxy var mı? (HTTP 200 → var)
+    // 1 — Proxy var mı? (HTTP 200 → var; response body'yi de saklıyoruz)
     echo "Checking if API proxy exists: ${projectName}/${proxyName}"
     def proxyCheckCode = sh(
         script: """
-            curl -s -o /dev/null -w '%{http_code}' \\
+            curl -s -o /tmp/apinizer_get.json -w '%{http_code}' \\
                 -H 'Authorization: Bearer ${token}' \\
                 '${baseUrl}/apiops/projects/${projectName}/apiProxies/${proxyName}/'
         """,
@@ -244,7 +244,7 @@ def apinizerProxySync(Map args) {
 
     def proxyExists = (proxyCheckCode == '200')
 
-    // 2a — Proxy varsa → rollback snapshot al, spec güncelle
+    // 2a — Proxy varsa → rollback snapshot al, mevcut relativePathList'i al, spec güncelle
     if (proxyExists) {
         echo 'API proxy exists — taking rollback snapshot and updating spec...'
 
@@ -257,6 +257,12 @@ def apinizerProxySync(Map args) {
         archiveArtifacts artifacts: "apinizer_backup_${environment}_${proxyName}.zip",
                          allowEmptyArchive: true
 
+        // Mevcut relativePathList'i parse et
+        def proxyJson       = readJSON file: '/tmp/apinizer_get.json'
+        def relativePathList = proxyJson.resultList[0].clientRoute.relativePathList
+        def relativePathJson = groovy.json.JsonOutput.toJson(relativePathList)
+        echo "Mevcut relativePathList: ${relativePathJson}"
+
         def updateStatus = sh(
             script: """
                 curl -s -o /tmp/apinizer_update.json -w '%{http_code}' \\
@@ -267,6 +273,10 @@ def apinizerProxySync(Map args) {
                         "apiProxyName": "${proxyName}",
                         "apiProxyCreationType": "OPEN_API",
                         "specUrl": "${openApiUrl}",
+                        "clientRoute": {
+                            "relativePathList": ${relativePathJson},
+                            "hostList": []
+                        },
                         "reParse": true,
                         "deploy": false
                     }' \\
