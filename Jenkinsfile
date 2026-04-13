@@ -260,7 +260,7 @@ def apinizerProxySync(Map args) {
         // Mevcut relativePathList'i parse et
         def proxyJson       = readJSON file: '/tmp/apinizer_get.json'
         def relativePathList = proxyJson.resultList[0].clientRoute.relativePathList
-        def relativePathJson = groovy.json.JsonOutput.toJson(relativePathList)
+        def relativePathJson = '[' + relativePathList.collect { '"' + it + '"' }.join(',') + ']'
         echo "Mevcut relativePathList: ${relativePathJson}"
 
         def updateStatus = sh(
