@@ -50,7 +50,3 @@ def info():
 @app.get("/health")
 def health():
     return {"status": "ok"}
-    
-@app.get("/deneme")
-def health():
-    return {"status": "deneme"}
