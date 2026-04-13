@@ -58,3 +58,7 @@ def health():
 @app.get("/test2")
 def health():
     return {"status": "test2"}
+
+@app.get("/test3")
+def health():
+    return {"status": "test3"}
