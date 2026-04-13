@@ -27,6 +27,10 @@ pipeline {
         OPENAPI_URL_DEV  = "http://${NODE_IP}:${DEV_NODE_PORT}/openapi.json"
         OPENAPI_URL_TEST = "http://${NODE_IP}:${TEST_NODE_PORT}/openapi.json"
         OPENAPI_URL_UAT  = "http://${NODE_IP}:${UAT_NODE_PORT}/openapi.json"
+
+        // Retry configuration
+        RETRY_COUNT     = '3'
+        RETRY_DELAY_SEC = '15'
     }
 
     stages {
@@ -51,35 +55,41 @@ pipeline {
                     """
                 }
             }
-            post { failure { echo '❌ Deploy Dev başarısız.' } }
+            post { failure { echo '❌ Deploy Dev failed.' } }
         }
 
         stage('Apinizer Sync Dev') {
             steps {
                 script {
-                    apinizerProxySync(
-                        proxyName:   env.PROXY_NAME,
-                        projectName: env.PROJECT_NAME_DEV,
-                        openApiUrl:  env.OPENAPI_URL_DEV,
-                        environment: 'dev'
-                    )
+                    retryWithDelay(env.RETRY_COUNT.toInteger(), env.RETRY_DELAY_SEC.toInteger(), 'Apinizer Sync Dev') {
+                        apinizerProxySync(
+                            proxyName:   env.PROXY_NAME,
+                            projectName: env.PROJECT_NAME_DEV,
+                            openApiUrl:  env.OPENAPI_URL_DEV,
+                            environment: 'dev'
+                        )
+                    }
                 }
             }
-            post { failure { echo '❌ Apinizer Sync Dev başarısız.' } }
+            post { failure { echo '❌ Apinizer Sync Dev failed.' } }
         }
 
         stage('Smoke Test Dev') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    smokeTest('messaging-dev', env.DEV_NODE_PORT)
+                    script {
+                        retryWithDelay(env.RETRY_COUNT.toInteger(), env.RETRY_DELAY_SEC.toInteger(), 'Smoke Test Dev') {
+                            smokeTest('messaging-dev', env.DEV_NODE_PORT)
+                        }
+                    }
                 }
             }
-            post { failure { echo '❌ Smoke Test Dev başarısız — pipeline durduruluyor.' } }
+            post { failure { echo '❌ Smoke Test Dev failed — pipeline stopping.' } }
         }
 
         stage('Approve Test') {
             steps {
-                input message: 'Test ortamına deploy edilsin mi?', ok: 'Proceed'
+                input message: "Deploy to TEST environment?\n\n🏷️ Image tag: ${params.SHA_TAG}", ok: 'Proceed'
             }
         }
 
@@ -97,35 +107,41 @@ pipeline {
                     """
                 }
             }
-            post { failure { echo '❌ Deploy Test başarısız.' } }
+            post { failure { echo '❌ Deploy Test failed.' } }
         }
 
         stage('Apinizer Sync Test') {
             steps {
                 script {
-                    apinizerProxySync(
-                        proxyName:   env.PROXY_NAME,
-                        projectName: env.PROJECT_NAME_TEST,
-                        openApiUrl:  env.OPENAPI_URL_TEST,
-                        environment: 'test'
-                    )
+                    retryWithDelay(env.RETRY_COUNT.toInteger(), env.RETRY_DELAY_SEC.toInteger(), 'Apinizer Sync Test') {
+                        apinizerProxySync(
+                            proxyName:   env.PROXY_NAME,
+                            projectName: env.PROJECT_NAME_TEST,
+                            openApiUrl:  env.OPENAPI_URL_TEST,
+                            environment: 'test'
+                        )
+                    }
                 }
             }
-            post { failure { echo '❌ Apinizer Sync Test başarısız.' } }
+            post { failure { echo '❌ Apinizer Sync Test failed.' } }
         }
 
         stage('Smoke Test Test') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    smokeTest('messaging-test', env.TEST_NODE_PORT)
+                    script {
+                        retryWithDelay(env.RETRY_COUNT.toInteger(), env.RETRY_DELAY_SEC.toInteger(), 'Smoke Test (test)') {
+                            smokeTest('messaging-test', env.TEST_NODE_PORT)
+                        }
+                    }
                 }
             }
-            post { failure { echo '❌ Smoke Test (test) başarısız — pipeline durduruluyor.' } }
+            post { failure { echo '❌ Smoke Test (test) failed — pipeline stopping.' } }
         }
 
         stage('Approve UAT') {
             steps {
-                input message: 'UAT ortamına deploy edilsin mi?', ok: 'Proceed'
+                input message: "Deploy to UAT environment?\n\n🏷️ Image tag: ${params.SHA_TAG}", ok: 'Proceed'
             }
         }
 
@@ -143,44 +159,50 @@ pipeline {
                     """
                 }
             }
-            post { failure { echo '❌ Deploy UAT başarısız.' } }
+            post { failure { echo '❌ Deploy UAT failed.' } }
         }
 
         stage('Apinizer Sync UAT') {
             steps {
                 script {
-                    apinizerProxySync(
-                        proxyName:   env.PROXY_NAME,
-                        projectName: env.PROJECT_NAME_UAT,
-                        openApiUrl:  env.OPENAPI_URL_UAT,
-                        environment: 'uat'
-                    )
+                    retryWithDelay(env.RETRY_COUNT.toInteger(), env.RETRY_DELAY_SEC.toInteger(), 'Apinizer Sync UAT') {
+                        apinizerProxySync(
+                            proxyName:   env.PROXY_NAME,
+                            projectName: env.PROJECT_NAME_UAT,
+                            openApiUrl:  env.OPENAPI_URL_UAT,
+                            environment: 'uat'
+                        )
+                    }
                 }
             }
-            post { failure { echo '❌ Apinizer Sync UAT başarısız.' } }
+            post { failure { echo '❌ Apinizer Sync UAT failed.' } }
         }
 
         stage('Smoke Test UAT') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    smokeTest('messaging-uat', env.UAT_NODE_PORT)
+                    script {
+                        retryWithDelay(env.RETRY_COUNT.toInteger(), env.RETRY_DELAY_SEC.toInteger(), 'Smoke Test UAT') {
+                            smokeTest('messaging-uat', env.UAT_NODE_PORT)
+                        }
+                    }
                 }
             }
-            post { failure { echo '❌ Smoke Test UAT başarısız.' } }
+            post { failure { echo '❌ Smoke Test UAT failed.' } }
         }
 
         // ── PROD ─────────────────────────────────────────────────────────────
 
         stage('Approve Prod') {
             steps {
-                input message: 'PRODUCTION ortamına promote edilsin mi?', ok: 'Proceed'
+                input message: "Promote to PRODUCTION environment?\n\n🏷️ Image tag: ${params.SHA_TAG}\n\n⚠️ This action will affect live traffic.", ok: 'Proceed'
             }
         }
 
         stage('Promote to Prod') {
             steps {
                 script {
-                    echo '🚀 PROD ortamına promote ediliyor...'
+                    echo '🚀 Promoting to PROD...'
 
                     def payload = '''{
   "mappingNames": ["messagingapi"],
@@ -189,37 +211,65 @@ pipeline {
 }'''
                     writeFile file: '/tmp/apinizer_promote_payload.json', text: payload
 
-                    def promoteStatus = sh(
-                        script: """
-                            curl -s -o /tmp/apinizer_promote.json -w '%{http_code}' \\
-                                -X POST \\
-                                -H 'Authorization: Bearer ${env.APINIZER_TOKEN}' \\
-                                -H 'Content-Type: application/json' \\
-                                -d @/tmp/apinizer_promote_payload.json \\
-                                '${env.APINIZER_URL}/apiops/promotion/executions'
-                        """,
-                        returnStdout: true
-                    ).trim()
+                    retryWithDelay(env.RETRY_COUNT.toInteger(), env.RETRY_DELAY_SEC.toInteger(), 'Promote to Prod') {
+                        def promoteStatus = sh(
+                            script: """
+                                curl -s -o /tmp/apinizer_promote.json -w '%{http_code}' \\
+                                    -X POST \\
+                                    -H 'Authorization: Bearer ${env.APINIZER_TOKEN}' \\
+                                    -H 'Content-Type: application/json' \\
+                                    -d @/tmp/apinizer_promote_payload.json \\
+                                    '${env.APINIZER_URL}/apiops/promotion/executions'
+                            """,
+                            returnStdout: true
+                        ).trim()
 
-                    echo "Apinizer promote HTTP: ${promoteStatus}"
-                    if (!promoteStatus.startsWith('2')) {
-                        error("❌ Prod promote başarısız (HTTP ${promoteStatus}): ${readFile('/tmp/apinizer_promote.json')}")
+                        echo "Apinizer promote HTTP: ${promoteStatus}"
+                        if (!promoteStatus.startsWith('2')) {
+                            error("❌ Prod promote failed (HTTP ${promoteStatus}): ${readFile('/tmp/apinizer_promote.json')}")
+                        }
                     }
-                    echo '✅ PROD ortamına başarıyla promote edildi.'
+                    echo '✅ Successfully promoted to PROD.'
                 }
             }
-            post { failure { echo '❌ Promote to Prod başarısız.' } }
+            post { failure { echo '❌ Promote to Prod failed.' } }
         }
     }
 
     post {
-        success { echo '✅ Pipeline başarıyla tamamlandı.' }
-        failure { echo '💥 Pipeline başarısız oldu.' }
+        success { echo '✅ Pipeline completed successfully.' }
+        failure { echo '💥 Pipeline failed.' }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Apinizer: Proxy oluştur/güncelle → ortama deploy et
+// Retry wrapper: retries a closure up to maxAttempts times with a delay between
+// each attempt. Throws on final failure.
+// Usage: retryWithDelay(3, 15, 'Stage Name') { /* your code */ }
+// ─────────────────────────────────────────────────────────────────────────────
+def retryWithDelay(int maxAttempts, int delaySeconds, String stageName, Closure body) {
+    int attempt = 0
+    while (true) {
+        attempt++
+        try {
+            echo "🔄 [${stageName}] Attempt ${attempt} of ${maxAttempts}..."
+            body()
+            echo "✅ [${stageName}] Succeeded on attempt ${attempt}."
+            return
+        } catch (Exception e) {
+            if (attempt >= maxAttempts) {
+                echo "❌ [${stageName}] All ${maxAttempts} attempts failed. Last error: ${e.message}"
+                throw e
+            }
+            echo "⚠️ [${stageName}] Attempt ${attempt} failed: ${e.message}"
+            echo "⏳ [${stageName}] Retrying in ${delaySeconds}s... (${attempt}/${maxAttempts})"
+            sleep(delaySeconds)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Apinizer: Create/update proxy → deploy to environment
 // ─────────────────────────────────────────────────────────────────────────────
 def apinizerProxySync(Map args) {
     def proxyName   = args.proxyName
@@ -230,7 +280,7 @@ def apinizerProxySync(Map args) {
     def token       = env.APINIZER_TOKEN
     def backendUrl  = openApiUrl.replace('/openapi.json', '')
 
-    // 1 — Proxy var mı? (HTTP 200 → var; response body'yi de saklıyoruz)
+    // 1 — Check if proxy exists (HTTP 200 → exists)
     echo "Checking if API proxy exists: ${projectName}/${proxyName}"
     def proxyCheckCode = sh(
         script: """
@@ -244,7 +294,7 @@ def apinizerProxySync(Map args) {
 
     def proxyExists = (proxyCheckCode == '200')
 
-    // 2a — Proxy varsa → rollback snapshot al, mevcut relativePathList'i al, spec güncelle
+    // 2a — Proxy exists → take rollback snapshot, read relativePathList, update spec
     if (proxyExists) {
         echo 'API proxy exists — taking rollback snapshot and updating spec...'
 
@@ -252,16 +302,15 @@ def apinizerProxySync(Map args) {
             curl -s -o apinizer_backup_${environment}_${proxyName}.zip \\
                 -H 'Authorization: Bearer ${token}' \\
                 '${baseUrl}/apiops/projects/${projectName}/apiProxies/${proxyName}/export/'
-            echo '✅ Rollback snapshot alındı.'
+            echo '✅ Rollback snapshot taken.'
         """
         archiveArtifacts artifacts: "apinizer_backup_${environment}_${proxyName}.zip",
                          allowEmptyArchive: true
 
-        // Mevcut relativePathList'i parse et
-        def proxyJson       = readJSON file: '/tmp/apinizer_get.json'
+        def proxyJson        = readJSON file: '/tmp/apinizer_get.json'
         def relativePathList = proxyJson.resultList[0].clientRoute.relativePathList
         def relativePathJson = '[' + relativePathList.collect { '"' + it + '"' }.join(',') + ']'
-        echo "Mevcut relativePathList: ${relativePathJson}"
+        echo "Existing relativePathList: ${relativePathJson}"
 
         def updateStatus = sh(
             script: """
@@ -287,10 +336,10 @@ def apinizerProxySync(Map args) {
 
         echo "Apinizer update HTTP: ${updateStatus}"
         if (!updateStatus.startsWith('2')) {
-            error("❌ Proxy güncelleme başarısız (HTTP ${updateStatus}): ${readFile('/tmp/apinizer_update.json')}")
+            error("❌ Proxy update failed (HTTP ${updateStatus}): ${readFile('/tmp/apinizer_update.json')}")
         }
 
-    // 2b — Proxy yoksa → oluştur
+    // 2b — Proxy does not exist → create it
     } else {
         echo 'API proxy not found — creating...'
 
@@ -330,12 +379,12 @@ def apinizerProxySync(Map args) {
 
         echo "Apinizer create HTTP: ${createStatus}"
         if (!createStatus.startsWith('2')) {
-            error("❌ Proxy oluşturma başarısız (HTTP ${createStatus}): ${readFile('/tmp/apinizer_create.json')}")
+            error("❌ Proxy creation failed (HTTP ${createStatus}): ${readFile('/tmp/apinizer_create.json')}")
         }
     }
 
-    // 3 — Ortama deploy et
-    echo "🚀 Deploy ediliyor → ${projectName}/${proxyName} @ ${environment}"
+    // 3 — Deploy to environment
+    echo "🚀 Deploying → ${projectName}/${proxyName} @ ${environment}"
     def deployStatus = sh(
         script: """
             curl -s -o /tmp/apinizer_deploy.json -w '%{http_code}' \\
@@ -348,9 +397,9 @@ def apinizerProxySync(Map args) {
 
     echo "Apinizer deploy HTTP: ${deployStatus}"
     if (!deployStatus.startsWith('2')) {
-        error("❌ Apinizer deploy başarısız (HTTP ${deployStatus}): ${readFile('/tmp/apinizer_deploy.json')}")
+        error("❌ Apinizer deploy failed (HTTP ${deployStatus}): ${readFile('/tmp/apinizer_deploy.json')}")
     }
-    echo "✅ Proxy '${proxyName}' → ${environment} ortamına başarıyla deploy edildi."
+    echo "✅ Proxy '${proxyName}' successfully deployed to ${environment}."
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -366,14 +415,14 @@ def smokeTest(String namespace, String nodePort) {
                 -n ${SMOKE_NAMESPACE} \
                 --timeout=120s
 
-            echo "5 saniye bekleniyor..."
+            echo "Waiting 5 seconds..."
             sleep 5
 
             for i in 1 2 3; do
                 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
                     --connect-timeout 10 \
                     "http://$NODE_IP:${SMOKE_PORT}/health")
-                echo "Deneme $i: $HTTP_STATUS"
+                echo "Attempt $i: $HTTP_STATUS"
                 if [ "$HTTP_STATUS" = "200" ]; then
                     echo "✅ /health 200 OK — ${SMOKE_NAMESPACE}"
                     exit 0
@@ -381,7 +430,7 @@ def smokeTest(String namespace, String nodePort) {
                 sleep 5
             done
 
-            echo "❌ /health başarısız: $HTTP_STATUS (beklenen: 200)"
+            echo "❌ /health failed: $HTTP_STATUS (expected: 200)"
             exit 1
         '''
     }
