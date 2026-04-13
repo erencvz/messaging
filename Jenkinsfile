@@ -34,19 +34,13 @@ pipeline {
                         cd k8s/overlays/dev
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
                         kubectl apply -k .
-
-                         # Pod tamamen ayağa kalkana kadar bekle
                         kubectl rollout status deployment/messaging-api \
                             -n messaging-dev \
                             --timeout=120s
                     """
                 }
             }
-            post {
-                failure {
-                    echo '❌ Deploy Dev başarısız.'
-                }
-            }
+            post { failure { echo '❌ Deploy Dev başarısız.' } }
         }
         stage('Apinizer Sync Dev') {
             steps {
@@ -59,11 +53,7 @@ pipeline {
                     )
                 }
             }
-            post {
-                failure {
-                    echo '❌ Apinizer Sync Dev başarısız.'
-                }
-            }
+            post { failure { echo '❌ Apinizer Sync Dev başarısız.' } }
         }
         stage('Smoke Test Dev') {
             steps {
@@ -71,11 +61,7 @@ pipeline {
                     smokeTest('messaging-dev', env.DEV_NODE_PORT)
                 }
             }
-            post {
-                failure {
-                    echo '❌ Smoke Test Dev başarısız — pipeline durduruluyor.'
-                }
-            }
+            post { failure { echo '❌ Smoke Test Dev başarısız — pipeline durduruluyor.' } }
         }
         stage('Approve Test') {
             steps {
@@ -91,19 +77,13 @@ pipeline {
                         cd k8s/overlays/test
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
                         kubectl apply -k .
-
-                        # Pod tamamen ayağa kalkana kadar bekle
                         kubectl rollout status deployment/messaging-api \
                             -n messaging-test \
                             --timeout=120s
                     """
                 }
             }
-            post {
-                failure {
-                    echo '❌ Deploy Test başarısız.'
-                }
-            }
+            post { failure { echo '❌ Deploy Test başarısız.' } }
         }
         stage('Apinizer Sync Test') {
             steps {
@@ -116,11 +96,7 @@ pipeline {
                     )
                 }
             }
-            post {
-                failure {
-                    echo '❌ Apinizer Sync Test başarısız.'
-                }
-            }
+            post { failure { echo '❌ Apinizer Sync Test başarısız.' } }
         }
         stage('Smoke Test Test') {
             steps {
@@ -128,11 +104,7 @@ pipeline {
                     smokeTest('messaging-test', env.TEST_NODE_PORT)
                 }
             }
-            post {
-                failure {
-                    echo '❌ Smoke Test (test) başarısız — pipeline durduruluyor.'
-                }
-            }
+            post { failure { echo '❌ Smoke Test (test) başarısız — pipeline durduruluyor.' } }
         }
         stage('Approve UAT') {
             steps {
@@ -148,19 +120,13 @@ pipeline {
                         cd k8s/overlays/uat
                         kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
                         kubectl apply -k .
-
-                        # Pod tamamen ayağa kalkana kadar bekle
                         kubectl rollout status deployment/messaging-api \
                             -n messaging-uat \
                             --timeout=120s
                     """
                 }
             }
-            post {
-                failure {
-                    echo '❌ Deploy UAT başarısız.'
-                }
-            }
+            post { failure { echo '❌ Deploy UAT başarısız.' } }
         }
         stage('Apinizer Sync UAT') {
             steps {
@@ -173,11 +139,7 @@ pipeline {
                     )
                 }
             }
-            post {
-                failure {
-                    echo '❌ Apinizer Sync UAT başarısız.'
-                }
-            }
+            post { failure { echo '❌ Apinizer Sync UAT başarısız.' } }
         }
         stage('Smoke Test UAT') {
             steps {
@@ -185,36 +147,37 @@ pipeline {
                     smokeTest('messaging-uat', env.UAT_NODE_PORT)
                 }
             }
-            post {
-                failure {
-                    echo '❌ Smoke Test UAT başarısız.'
-                }
-            }
+            post { failure { echo '❌ Smoke Test UAT başarısız.' } }
         }
+        // ─── PROD ─────────────────────────────────────────────────────────────
         stage('Approve Prod') {
             steps {
-                input message: 'PROD ortamına promote edilsin mi?', ok: 'Devam Et'
+                input message: '🚨 PROD ortamına promote edilsin mi?', ok: 'Devam Et'
             }
         }
         stage('Promote to Prod') {
             steps {
                 script {
                     echo "🚀 PROD ortamına promote ediliyor..."
+
+                    writeFile file: '/tmp/apinizer_promote_payload.json', text: '''{
+  "mappingNames": ["messagingapi"],
+  "executionName": "Db2Map v2.1 - Production Deploy",
+  "executionDescription": "API Proxy promotion from UAT to Production environment"
+}'''
+
                     def promoteStatus = sh(
                         script: """
-                    curl -s -o /tmp/apinizer_promote.json -w "%{http_code}" \\
-                        -X POST \\
-                        -H "Authorization: Bearer ${env.APINIZER_TOKEN}" \\
-                        -H "Content-Type: application/json" \\
-                        -d '{
-                            "mappingNames": ["messagingapi"],
-                            "executionName": "Db2Map v2.1 - Production Deploy",
-                            "executionDescription": "API Proxy promotion from UAT to Production environment"
-                        }' \\
-                        "${env.APINIZER_URL}/apiops/promotion/executions/"
-                """,
+                            curl -s -o /tmp/apinizer_promote.json -w "%{http_code}" \\
+                                -X POST \\
+                                -H "Authorization: Bearer ${env.APINIZER_TOKEN}" \\
+                                -H "Content-Type: application/json" \\
+                                -d @/tmp/apinizer_promote_payload.json \\
+                                "${env.APINIZER_URL}/apiops/promotion/executions"
+                        """,
                         returnStdout: true
                     ).trim()
+
                     echo "Apinizer promote HTTP: ${promoteStatus}"
                     if (!promoteStatus.startsWith('2')) {
                         error("❌ Prod promote başarısız (HTTP ${promoteStatus}): ${readFile('/tmp/apinizer_promote.json')}")
@@ -222,20 +185,12 @@ pipeline {
                     echo "✅ PROD ortamına başarıyla promote edildi."
                 }
             }
-            post {
-                failure {
-                    echo '❌ Promote to Prod başarısız.'
-                }
-            }
+            post { failure { echo '❌ Promote to Prod başarısız.' } }
         }
     }
     post {
-        success {
-            echo '✅ Pipeline başarıyla tamamlandı.'
-        }
-        failure {
-            echo '💥 Pipeline başarısız oldu.'
-        }
+        success { echo '✅ Pipeline başarıyla tamamlandı.' }
+        failure { echo '💥 Pipeline başarısız oldu.' }
     }
 }
 
@@ -250,7 +205,7 @@ def apinizerProxySync(Map args) {
     def baseUrl = env.APINIZER_URL
     def token = env.APINIZER_TOKEN
     def backendUrl = openApiUrl.replace('/openapi.json', '')
-    // 1) Proxy var mı kontrol et
+
     sh(
         script: """
             curl -s -o /tmp/apinizer_list.json -w "%{http_code}" \
@@ -259,9 +214,10 @@ def apinizerProxySync(Map args) {
         """,
         returnStdout: true
     ).trim()
+
     def listBody = readFile('/tmp/apinizer_list.json')
     def proxyExists = listBody.contains("\"${proxyName}\"")
-    // 2a) Rollback snapshot (proxy varsa) — workspace'e kaydet
+
     if (proxyExists) {
         sh """
             curl -s -o apinizer_backup_${environment}_${proxyName}.zip \
@@ -272,11 +228,13 @@ def apinizerProxySync(Map args) {
         archiveArtifacts artifacts: "apinizer_backup_${environment}_${proxyName}.zip",
         allowEmptyArchive: true
     }
-    // 2b) Proxy oluştur veya güncelle — ikisi de /url/ endpoint'ini kullanır
-    def method = proxyExists ? 'PUT': 'POST'
-    def outFile = proxyExists ? '/tmp/apinizer_update.json': '/tmp/apinizer_create.json'
-    def action = proxyExists ? 'güncelleme': 'oluşturma'
+
+    def method = proxyExists ? 'PUT' : 'POST'
+    def outFile = proxyExists ? '/tmp/apinizer_update.json' : '/tmp/apinizer_create.json'
+    def action = proxyExists ? 'güncelleme' : 'oluşturma'
+
     echo "ℹ️  Proxy ${proxyExists ? 'mevcut → güncelleniyor' : 'bulunamadı → oluşturuluyor'} (${projectName}/${proxyName})"
+
     writeFile file: '/tmp/apinizer_payload.json', text: """{
   "apiProxyName": "${proxyName}",
   "apiProxyCreationType": "OPEN_API",
@@ -300,6 +258,7 @@ def apinizerProxySync(Map args) {
   "deploy": true,
   "deployTargetEnvironmentNameList": ["${environment}"]
 }"""
+
     def syncStatus = sh(
         script: """
             curl -s -o ${outFile} -w "%{http_code}" \\
@@ -311,11 +270,12 @@ def apinizerProxySync(Map args) {
         """,
         returnStdout: true
     ).trim()
+
     echo "Apinizer ${action} HTTP: ${syncStatus}"
     if (!syncStatus.startsWith('2')) {
         error("❌ Proxy ${action} başarısız (HTTP ${syncStatus}): ${readFile(outFile)}")
     }
-    // 3) Ortama deploy et
+
     echo "🚀 Deploy ediliyor → ${projectName}/${proxyName} @ ${environment}"
     def deployStatus = sh(
         script: """
@@ -326,12 +286,15 @@ def apinizerProxySync(Map args) {
         """,
         returnStdout: true
     ).trim()
+
     echo "Apinizer deploy HTTP: ${deployStatus}"
     if (!deployStatus.startsWith('2')) {
         error("❌ Apinizer deploy başarısız (HTTP ${deployStatus}): ${readFile('/tmp/apinizer_deploy.json')}")
     }
+
     echo "✅ Apinizer proxy ${environment} ortamına başarıyla deploy edildi."
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Kubernetes rollout + /health kontrol
 // ─────────────────────────────────────────────────────────────────────────────
@@ -339,31 +302,23 @@ def smokeTest(String namespace, String nodePort) {
     withEnv(["SMOKE_NAMESPACE=${namespace}", "SMOKE_PORT=${nodePort}"]) {
         sh '''
             export KUBECONFIG=$KUBECONFIG
-
             echo "Smoke test: http://$NODE_IP:${SMOKE_PORT}/health"
-
             kubectl rollout status deployment/messaging-api \
                 -n ${SMOKE_NAMESPACE} \
                 --timeout=120s
-
             echo "5 saniye bekleniyor..."
             sleep 5
-
             for i in 1 2 3; do
                 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
                     --connect-timeout 10 \
                     "http://$NODE_IP:${SMOKE_PORT}/health")
-
                 echo "Deneme $i: $HTTP_STATUS"
-
                 if [ "$HTTP_STATUS" = "200" ]; then
                     echo "✅ /health 200 OK — ${SMOKE_NAMESPACE}"
                     exit 0
                 fi
-
                 sleep 5
             done
-
             echo "❌ /health başarısız: $HTTP_STATUS (beklenen: 200)"
             exit 1
         '''
