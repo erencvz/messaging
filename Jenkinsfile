@@ -3,9 +3,9 @@ pipeline {
 
     parameters {
         string(
-            name: 'SHA_TAG',
+            name: 'VERSION_TAG',
             defaultValue: 'latest',
-            description: 'Docker image tag pushed by CI (e.g. sha-abc1234)'
+            description: 'Semantic version tag pushed by CI (e.g. v1.2.3)'
         )
     }
 
@@ -49,7 +49,7 @@ pipeline {
                     sh """
                         export KUBECONFIG=\$KUBECONFIG
                         cd k8s/overlays/dev
-                        kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
+                        kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.VERSION_TAG}
                         kubectl apply -k .
                         kubectl rollout status deployment/messaging-api -n messaging-dev --timeout=120s
                     """
@@ -63,10 +63,11 @@ pipeline {
                 script {
                     retryWithDelay(env.RETRY_COUNT.toInteger(), env.RETRY_DELAY_SEC.toInteger(), 'Apinizer Sync Dev') {
                         apinizerProxySync(
-                            proxyName:   env.PROXY_NAME,
-                            projectName: env.PROJECT_NAME_DEV,
-                            openApiUrl:  env.OPENAPI_URL_DEV,
-                            environment: 'dev'
+                            proxyName:      env.PROXY_NAME,
+                            projectName:    env.PROJECT_NAME_DEV,
+                            openApiUrl:     env.OPENAPI_URL_DEV,
+                            environment:    'dev',
+                            versionTag:     params.VERSION_TAG
                         )
                     }
                 }
@@ -89,7 +90,7 @@ pipeline {
 
         stage('Approve Test') {
             steps {
-                input message: "Deploy to TEST environment?\n\n🏷️ Image tag: ${params.SHA_TAG}", ok: 'Proceed'
+                input message: "Deploy to TEST environment?\n\n🏷️ Version: ${params.VERSION_TAG}", ok: 'Proceed'
             }
         }
 
@@ -101,7 +102,7 @@ pipeline {
                     sh """
                         export KUBECONFIG=\$KUBECONFIG
                         cd k8s/overlays/test
-                        kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
+                        kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.VERSION_TAG}
                         kubectl apply -k .
                         kubectl rollout status deployment/messaging-api -n messaging-test --timeout=120s
                     """
@@ -115,10 +116,11 @@ pipeline {
                 script {
                     retryWithDelay(env.RETRY_COUNT.toInteger(), env.RETRY_DELAY_SEC.toInteger(), 'Apinizer Sync Test') {
                         apinizerProxySync(
-                            proxyName:   env.PROXY_NAME,
-                            projectName: env.PROJECT_NAME_TEST,
-                            openApiUrl:  env.OPENAPI_URL_TEST,
-                            environment: 'test'
+                            proxyName:      env.PROXY_NAME,
+                            projectName:    env.PROJECT_NAME_TEST,
+                            openApiUrl:     env.OPENAPI_URL_TEST,
+                            environment:    'test',
+                            versionTag:     params.VERSION_TAG
                         )
                     }
                 }
@@ -141,7 +143,7 @@ pipeline {
 
         stage('Approve UAT') {
             steps {
-                input message: "Deploy to UAT environment?\n\n🏷️ Image tag: ${params.SHA_TAG}", ok: 'Proceed'
+                input message: "Deploy to UAT environment?\n\n🏷️ Version: ${params.VERSION_TAG}", ok: 'Proceed'
             }
         }
 
@@ -153,7 +155,7 @@ pipeline {
                     sh """
                         export KUBECONFIG=\$KUBECONFIG
                         cd k8s/overlays/uat
-                        kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.SHA_TAG}
+                        kustomize edit set image ${IMAGE_BASE}=${IMAGE_BASE}:${params.VERSION_TAG}
                         kubectl apply -k .
                         kubectl rollout status deployment/messaging-api -n messaging-uat --timeout=120s
                     """
@@ -167,10 +169,11 @@ pipeline {
                 script {
                     retryWithDelay(env.RETRY_COUNT.toInteger(), env.RETRY_DELAY_SEC.toInteger(), 'Apinizer Sync UAT') {
                         apinizerProxySync(
-                            proxyName:   env.PROXY_NAME,
-                            projectName: env.PROJECT_NAME_UAT,
-                            openApiUrl:  env.OPENAPI_URL_UAT,
-                            environment: 'uat'
+                            proxyName:      env.PROXY_NAME,
+                            projectName:    env.PROJECT_NAME_UAT,
+                            openApiUrl:     env.OPENAPI_URL_UAT,
+                            environment:    'uat',
+                            versionTag:     params.VERSION_TAG
                         )
                     }
                 }
@@ -195,7 +198,7 @@ pipeline {
 
         stage('Approve Prod') {
             steps {
-                input message: "Promote to PRODUCTION environment?\n\n🏷️ Image tag: ${params.SHA_TAG}\n\n⚠️ This action will affect live traffic.", ok: 'Proceed'
+                input message: "Promote to PRODUCTION environment?\n\n🏷️ Version: ${params.VERSION_TAG}\n\n⚠️ This action will affect live traffic.", ok: 'Proceed'
             }
         }
 
@@ -204,11 +207,11 @@ pipeline {
                 script {
                     echo '🚀 Promoting to PROD...'
 
-                    def payload = '''{
+                    def payload = """{
   "mappingNames": ["messagingapi"],
   "executionName": "Db2Map v2.1 - Production Deploy",
-  "executionDescription": "API Proxy promotion from UAT to Production environment"
-}'''
+  "executionDescription": "API Proxy promotion from UAT to Production environment - ${params.VERSION_TAG}"
+}"""
                     writeFile file: '/tmp/apinizer_promote_payload.json', text: payload
 
                     retryWithDelay(env.RETRY_COUNT.toInteger(), env.RETRY_DELAY_SEC.toInteger(), 'Promote to Prod') {
@@ -243,9 +246,7 @@ pipeline {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Retry wrapper: retries a closure up to maxAttempts times with a delay between
-// each attempt. Throws on final failure.
-// Usage: retryWithDelay(3, 15, 'Stage Name') { /* your code */ }
+// Retry wrapper
 // ─────────────────────────────────────────────────────────────────────────────
 def retryWithDelay(int maxAttempts, int delaySeconds, String stageName, Closure body) {
     int attempt = 0
@@ -276,6 +277,7 @@ def apinizerProxySync(Map args) {
     def projectName = args.projectName
     def openApiUrl  = args.openApiUrl
     def environment = args.environment
+    def versionTag  = args.versionTag
     def baseUrl     = env.APINIZER_URL
     def token       = env.APINIZER_TOKEN
     def backendUrl  = openApiUrl.replace('/openapi.json', '')
@@ -294,7 +296,7 @@ def apinizerProxySync(Map args) {
 
     def proxyExists = (proxyCheckCode == '200')
 
-    // 2a — Proxy exists → take rollback snapshot, read relativePathList, update spec
+    // 2a — Proxy exists → take rollback snapshot, update spec
     if (proxyExists) {
         echo 'API proxy exists — taking rollback snapshot and updating spec...'
 
@@ -320,6 +322,7 @@ def apinizerProxySync(Map args) {
                     -H 'Content-Type: application/json' \\
                     -d '{
                         "apiProxyName": "${proxyName}",
+                        "backendApiVersion": "${versionTag}",
                         "apiProxyCreationType": "OPEN_API",
                         "specUrl": "${openApiUrl}",
                         "clientRoute": {
@@ -351,6 +354,7 @@ def apinizerProxySync(Map args) {
                     -H 'Content-Type: application/json' \\
                     -d '{
                         "apiProxyName": "${proxyName}",
+                        "backendApiVersion": "${versionTag}",
                         "apiProxyDescription": "Auto-generated proxy",
                         "apiProxyCreationType": "OPEN_API",
                         "specUrl": "${openApiUrl}",
