@@ -51,3 +51,6 @@ def info():
 def health():
     return {"status": "ok"}
 
+@app.get("/health2")
+def health():
+    return {"status": "health2test"}
