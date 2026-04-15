@@ -37,7 +37,12 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                checkout scm
+                checkout scm: [
+                    $class: 'GitSCM',
+                    branches: scm.branches,
+                    userRemoteConfigs: scm.userRemoteConfigs,
+                    extensions: [[$class: 'CleanBeforeCheckout']]
+                ]
             }
         }
 
